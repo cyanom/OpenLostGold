@@ -23,10 +23,11 @@ namespace uengine::graphics {
             ~GraphicsQuads();
             
             void addQuad(float pos1[2], float pos2[2], float pos3[2], float pos4[2], float color[4]);
-            void addRect(float pos[2], float size[2], float color[4]);
+            void addRect(float pos1[2], float pos2[2], float color[4]);
+            void addRect(float x1, float y1, float x2, float y2, float r, float g, float b, float a);
             void clear();
 
-            void updateView(glm::mat4 vp);
+            void setViewProjection(glm::mat4 vp);
             void render(VkCommandBuffer cb);
 
         private:
@@ -44,16 +45,18 @@ namespace uengine::graphics {
             std::vector<Vertex> vertices;
             VkBuffer vertexBuffer;
             VkDeviceMemory vertexMemory;
+            
             // INDICES
             std::vector<uint16_t> indices;
             VkBuffer indexBuffer;
             VkDeviceMemory indexMemory;
-            // VP MATRIX
-            struct DirectVPData {
+            
+            // UBO
+            struct {
                 glm::mat4 directVP;
-            } directVPData;
-            VkBuffer directVPBuffer;
-            VkDeviceMemory directVPMemory;
+            } ubo;
+            VkBuffer uboBuffer;
+            VkDeviceMemory uboMemory;
 
             VkDescriptorPool descriptorPool;
             VkDescriptorSetLayout descriptorSetLayout;
@@ -61,15 +64,14 @@ namespace uengine::graphics {
             VkPipelineLayout pipelineLayout;
             VkPipeline pipeline;
 
-            void updateQuads();
-
-            void setupVertexBuffer();
-            void setupIndexBuffer();
-            void setupUBO();
             void setupDescriptorPool();
             void setupDescriptorSetLayout();
             void setupDescriptorSet();
             void setupPipeline();
+            void setupVertexBuffer();
+            void setupIndexBuffer();
+            void setupUBO();
+            void update();
     };
 
 }

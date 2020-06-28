@@ -3,93 +3,54 @@
 using namespace uengine::sprite_editor;
 using namespace uengine::graphics;
 using GraphicsBase = uengine::graphics::GraphicsBase;
+using GraphicsGrid = uengine::graphics::GraphicsGrid;
 using GraphicsQuads = uengine::graphics::GraphicsQuads;
 namespace gh = uengine::graphics::helper;
 
 
 SpriteEditorOverviewRenderer::SpriteEditorOverviewRenderer(GraphicsBase * gb_) {
     gb = gb_;
-
-    setupDescriptorPool();
     setupRenderPass();
-
-    setupGrid();
-    setupTileset();
-    currentSelection.quads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
-    previousSelection.quads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
+    grid = new GraphicsGrid(gb, &renderPass);
+    currentSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
+    previousSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
 }
 
 SpriteEditorOverviewRenderer::~SpriteEditorOverviewRenderer() {
+    delete grid;
+    delete currentSelectionQuads;
+    delete previousSelectionQuads;
     destroyOffscreen();
-    destroyGrid();
-    destroyTileset();
-    delete currentSelection.quads;
-    delete previousSelection.quads;
     gb->destroyRenderPass(renderPass, nullptr);
-    gb->destroyDescriptorPool(descriptorPool, nullptr);
 }
+
+/*
+ *  External methods
+ */
 
 void SpriteEditorOverviewRenderer::setBackgroundColor(float color[4]) {
     std::copy(color, color + 4, backgroundColor);
 }
 
-void SpriteEditorOverviewRenderer::setVP(glm::mat4 vp_) {
-    vp = vp_;
-    tileset.changed = true;
-    grid.changed = true;
+void SpriteEditorOverviewRenderer::setViewProjection(glm::mat4 vp) {
+    grid->setViewProjection(vp);
+    currentSelectionQuads->setViewProjection(vp);
+    previousSelectionQuads->setViewProjection(vp);
 }
 
-void SpriteEditorOverviewRenderer::setGridColor(float color1[4], float color2[4]) {
-    grid.gridParamData.color1 = glm::make_vec4(color1);
-    grid.gridParamData.color2 = glm::make_vec4(color2);
-    grid.changed = true;
+GraphicsGrid * SpriteEditorOverviewRenderer::getGrid() {
+    return grid;
 }
 
-void SpriteEditorOverviewRenderer::setGridUnitSize(int unitSize[2]) {
-    grid.gridParamData.unitSize = glm::make_vec4(unitSize);
-    grid.changed = true;
+GraphicsQuads * SpriteEditorOverviewRenderer::getCurrentSelectionQuads() {
+    return currentSelectionQuads;
 }
 
-void SpriteEditorOverviewRenderer::setGridTilesetSize(int tilesetSize[2]) {
-    grid.gridParamData.tilesetSize = glm::make_vec4(tilesetSize);
-    grid.changed = true;
-}
-
-void SpriteEditorOverviewRenderer::setGridViewSize(int viewSize[2]) {
-    grid.gridParamData.viewSize = glm::make_vec4(viewSize);
-    grid.changed = true;
-}
-
-void SpriteEditorOverviewRenderer::setGridOffset(int offset[2]) {
-    grid.gridParamData.offset = glm::make_vec4(offset);
-    grid.changed = true;
-}
-
-void SpriteEditorOverviewRenderer::setGridExtended(bool extended) {
-    grid.gridParamData.extended = extended;
-    grid.changed = true;
-}
-
-
-void SpriteEditorOverviewRenderer::setTilesetSprite(Sprite * sprite) {
-    tileset.sprite = sprite;
-    tileset.changed = true;
-}
-
-void SpriteEditorOverviewRenderer::setTilesetModel(glm::mat4 model) {
-    tileset.model = model;
-    tileset.changed = true;
+GraphicsQuads * SpriteEditorOverviewRenderer::getPreviousSelectionQuads() {
+    return previousSelectionQuads;
 }
 
 void SpriteEditorOverviewRenderer::update() {
-    if (tileset.changed) {
-        updateTilesetBuffers();
-        tileset.changed = false;
-    }
-    if (grid.changed) {
-        updateGridBuffers();
-        grid.changed = false;
-    }
 }
 
 void SpriteEditorOverviewRenderer::render(VkCommandBuffer cb) {
@@ -115,19 +76,10 @@ void SpriteEditorOverviewRenderer::render(VkCommandBuffer cb) {
 
     VkRect2D scissor = gh::rect2D(offscreen.width, offscreen.height, 0, 0);
     vkCmdSetScissor(cb, 0, 1, &scissor);
-
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, grid.pipeline);
-    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, grid.pipelineLayout, 0, 1, &grid.descriptorSet, 0, nullptr);
-    vkCmdDraw(cb, 6, 1, 0, 0);
-
-    if (tileset.sprite && !tileset.changed) {
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, tileset.pipeline);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, tileset.pipelineLayout, 0, 1, &tileset.descriptorSet, 0, nullptr);
-        vkCmdDraw(cb, 6, 1, 0, 0);
-    }
-
-    currentSelection.quads->render(cb);
-    previousSelection.quads->render(cb);
+    
+    grid->render(cb);
+    currentSelectionQuads->render(cb);
+    previousSelectionQuads->render(cb);
 
     vkCmdEndRenderPass(cb);
 }
@@ -143,31 +95,17 @@ void SpriteEditorOverviewRenderer::resize(int32_t width, int32_t height) {
         return;
     
     setupOffscreen(width, height);
+    float size[2] = {(float) width, (float) height};
+    grid->setScreenSize(size);
 }
 
 ImTextureID SpriteEditorOverviewRenderer::getTexture() {
     return offscreen.texture;
 }
 
-/* Descriptor pool */ 
-
-void SpriteEditorOverviewRenderer::setupDescriptorPool() {
-    std::vector<VkDescriptorPoolSize> poolSizes = {
-        gh::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16),
-        gh::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
-    };
-
-    VkDescriptorPoolCreateInfo descriptorPoolInfo =
-        gh::descriptorPoolCreateInfo(
-            poolSizes.size(),
-            poolSizes.data(),
-            2);
-
-    gb->createDescriptorPool(&descriptorPoolInfo, nullptr, &descriptorPool);
-}
-
-
-/*--------------------- Render pass ---------------------*/
+/*
+ *  Internal methods
+ */
 
 void SpriteEditorOverviewRenderer::setupRenderPass() {
     // Render pass creation
@@ -218,8 +156,6 @@ void SpriteEditorOverviewRenderer::setupRenderPass() {
 
     gb->createRenderPass(&renderPassInfo, nullptr, &renderPass);
 }
-
-/*------------------ Offscreen ------------------*/
 
 void SpriteEditorOverviewRenderer::setupOffscreen(int32_t width, int32_t height) {
     offscreen.width = width;
@@ -302,415 +238,4 @@ void SpriteEditorOverviewRenderer::destroyOffscreen() {
     gb->destroyImage(offscreen.image, nullptr);
     gb->freeMemory(offscreen.mem, nullptr);
     offscreen.texture = nullptr;
-}
-
-
-/* ---------------------Grid ---------------------*/
-
-void SpriteEditorOverviewRenderer::setupGrid() {
-    setupGridBuffers();
-    setupGridDescriptorSetLayout();
-    setupGridDescriptorSet();
-    setupGridPipeline();
-}
-
-void SpriteEditorOverviewRenderer::setupGridBuffers() {
-    VkDeviceSize gridParamBufferSize = sizeof(grid.gridParamData);
-    gb->createBuffer(
-        gridParamBufferSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        grid.gridParamBuffer,
-        grid.gridParamMemory);
-    
-    VkDeviceSize inverseMVPBufferSize = sizeof(grid.inverseMVPData);
-    gb->createBuffer(
-        inverseMVPBufferSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        grid.inverseMVPBuffer,
-        grid.inverseMVPMemory);
-}
-
-void SpriteEditorOverviewRenderer::setupGridDescriptorSetLayout() {
-    // Binding
-    std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-        gh::descriptorSetLayoutBinding(
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            VK_SHADER_STAGE_FRAGMENT_BIT,
-            0),
-        gh::descriptorSetLayoutBinding(
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            VK_SHADER_STAGE_FRAGMENT_BIT,
-            1)
-    };
-
-    // Layouts
-    VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = gh::descriptorSetLayoutCreateInfo(setLayoutBindings.data(), static_cast<uint32_t>(setLayoutBindings.size()));
-    gb->createDescriptorSetLayout(&descriptorLayoutInfo, nullptr, &grid.descriptorSetLayout);
-}
-
-void SpriteEditorOverviewRenderer::setupGridDescriptorSet() {
-    VkDescriptorSetAllocateInfo allocInfo =
-        gh::descriptorSetAllocateInfo(
-            descriptorPool,
-            &grid.descriptorSetLayout,
-            1);
-
-    gb->allocateDescriptorSets(&allocInfo, &grid.descriptorSet);
-
-    VkDescriptorBufferInfo gridParamBufferInfo =
-        gh::descriptorBufferInfo(
-            grid.gridParamBuffer,
-            0,
-            sizeof(grid.gridParamData));
-    
-    VkDescriptorBufferInfo inverseMVPBufferInfo =
-        gh::descriptorBufferInfo(
-            grid.inverseMVPBuffer,
-            0,
-            sizeof(grid.inverseMVPData));
-    
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
-        gh::writeDescriptorSet(
-            grid.descriptorSet,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            0,
-            &gridParamBufferInfo),
-        gh::writeDescriptorSet(
-            grid.descriptorSet,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            1,
-            &inverseMVPBufferInfo)
-    };
-
-    gb->updateDescriptorSets(static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
-}
-
-void SpriteEditorOverviewRenderer::setupGridPipeline() {
-    // Shaders
-    VkShaderModule vertShaderModule = gb->createShaderModule("res/shaders/tileset_view/grid/vert.spv");
-    VkShaderModule fragShaderModule = gb->createShaderModule("res/shaders/tileset_view/grid/frag.spv");
-
-    std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages;
-    shaderStages[0] = gh::pipelineShaderStageCreateInfo(vertShaderModule, VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] = gh::pipelineShaderStageCreateInfo(fragShaderModule, VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    // Vertex input
-    VkPipelineVertexInputStateCreateInfo vertexInputState = gh::pipelineVertexInputStateCreateInfo();
-    vertexInputState.vertexBindingDescriptionCount = 0;
-    vertexInputState.vertexAttributeDescriptionCount = 0;
-
-    // Input assembly
-    VkPipelineInputAssemblyStateCreateInfo inputAssemblyState =
-        gh::pipelineInputAssemblyStateCreateInfo(
-            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            0,
-            VK_FALSE);
-
-    // Viewport
-    VkPipelineViewportStateCreateInfo viewportState = gh::pipelineViewportStateCreateInfo(1, 1, 0);
-
-    // Rasterizer
-    VkPipelineRasterizationStateCreateInfo rasterizationState =
-        gh::pipelineRasterizationStateCreateInfo(
-            VK_POLYGON_MODE_FILL,
-            VK_CULL_MODE_FRONT_BIT,
-            VK_FRONT_FACE_CLOCKWISE,
-            0);
-
-    // Multisampling
-    VkPipelineMultisampleStateCreateInfo multisampleState = 
-        gh::pipelineMultisampleStateCreateInfo(
-            VK_SAMPLE_COUNT_1_BIT,
-            0);
-    
-    // Color blend attachment
-    VkPipelineColorBlendAttachmentState colorBlendAttachmentState = 
-        gh::pipelineColorBlendAttachmentState(
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-            VK_TRUE);
-    colorBlendAttachmentState.blendEnable = VK_TRUE;
-    colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    colorBlendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
-    colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    colorBlendAttachmentState.alphaBlendOp = VK_BLEND_OP_MAX;
-
-    // Color blend state
-    VkPipelineColorBlendStateCreateInfo colorBlendState =
-        gh::pipelineColorBlendStateCreateInfo(
-            1,
-            &colorBlendAttachmentState);
-
-    // Dynamic state
-    std::vector<VkDynamicState> dynamicStateEnables = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-    };
-
-    VkPipelineDynamicStateCreateInfo dynamicState =
-        gh::pipelineDynamicStateCreateInfo(
-            dynamicStateEnables.data(),
-            dynamicStateEnables.size(),
-            0);
-
-    // Pipeline layout creation
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo =
-        gh::pipelineLayoutCreateInfo(
-            &grid.descriptorSetLayout,
-            1);
-
-    gb->createPipelineLayout(&pipelineLayoutInfo, nullptr, &grid.pipelineLayout);
-
-    // Actual pipeline creation
-    VkGraphicsPipelineCreateInfo pipelineCreateInfo = gh::pipelineCreateInfo(grid.pipelineLayout, renderPass, 0);
-    pipelineCreateInfo.pVertexInputState = &vertexInputState;
-    pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
-    pipelineCreateInfo.pRasterizationState = &rasterizationState;
-    pipelineCreateInfo.pColorBlendState = &colorBlendState;
-    pipelineCreateInfo.pMultisampleState = &multisampleState;
-    pipelineCreateInfo.pViewportState = &viewportState;
-    pipelineCreateInfo.pDynamicState = &dynamicState;
-    pipelineCreateInfo.stageCount = shaderStages.size();
-    pipelineCreateInfo.pStages = shaderStages.data();
-    
-    gb->createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &grid.pipeline);
-
-    // Cleanup
-    gb->destroyShaderModule(vertShaderModule, nullptr);
-    gb->destroyShaderModule(fragShaderModule, nullptr);
-}
-
-void SpriteEditorOverviewRenderer::updateGridBuffers() {
-    glm::mat4 m = vp * tileset.model;
-    grid.inverseMVPData.inverseMVP = glm::inverse(m);
-    
-    void * data;
-    // MVP matrix
-    gb->mapMemory(grid.inverseMVPMemory, 0, sizeof(grid.inverseMVPData), 0, &data);
-        memcpy(data, &grid.inverseMVPData, sizeof(grid.inverseMVPData));
-    gb->unmapMemory(grid.inverseMVPMemory);
-    
-    // Parameters
-    gb->mapMemory(grid.gridParamMemory, 0, sizeof(grid.gridParamData), 0, &data);
-        memcpy(data, &grid.gridParamData, sizeof(grid.gridParamData));
-    gb->unmapMemory(grid.gridParamMemory);
-}
-
-void SpriteEditorOverviewRenderer::destroyGrid() {
-    gb->destroyPipeline(grid.pipeline, nullptr);
-    gb->destroyPipelineLayout(grid.pipelineLayout, nullptr);
-    gb->destroyBuffer(grid.inverseMVPBuffer, nullptr);
-    gb->destroyBuffer(grid.gridParamBuffer, nullptr);
-    gb->freeMemory(grid.inverseMVPMemory, nullptr);
-    gb->freeMemory(grid.gridParamMemory, nullptr);
-    gb->destroyDescriptorSetLayout(grid.descriptorSetLayout, nullptr);
-}
-
-
-/*--------------------- Tileset ---------------------*/
-
-void SpriteEditorOverviewRenderer::setupTileset() {
-    setupTilesetBuffers();
-    setupTilesetDescriptorSetLayout();
-    setupTilesetDescriptorSet();
-    setupTilesetPipeline();
-}
-
-void SpriteEditorOverviewRenderer::setupTilesetBuffers() {
-    VkDeviceSize tilesetMVPBufferSize = sizeof(tileset.tilesetMVPData);
-    gb->createBuffer(
-        tilesetMVPBufferSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        tileset.tilesetMVPBuffer,
-        tileset.tilesetMVPMemory);
-}
-
-void SpriteEditorOverviewRenderer::setupTilesetDescriptorSetLayout() {
-    // Binding
-    std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-        gh::descriptorSetLayoutBinding(
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            VK_SHADER_STAGE_VERTEX_BIT,
-            0),
-        gh::descriptorSetLayoutBinding(
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            VK_SHADER_STAGE_FRAGMENT_BIT,
-            1)
-    };
-
-    // Layouts
-    VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = gh::descriptorSetLayoutCreateInfo(setLayoutBindings.data(), static_cast<uint32_t>(setLayoutBindings.size()));
-    gb->createDescriptorSetLayout(&descriptorLayoutInfo, nullptr, &tileset.descriptorSetLayout);
-}
-
-void SpriteEditorOverviewRenderer::setupTilesetDescriptorSet() {
-    VkDescriptorSetAllocateInfo allocInfo =
-        gh::descriptorSetAllocateInfo(
-            descriptorPool,
-            &tileset.descriptorSetLayout,
-            1);
-
-    gb->allocateDescriptorSets(&allocInfo, &tileset.descriptorSet);
-
-    VkDescriptorBufferInfo tilesetMVPBufferInfo =
-        gh::descriptorBufferInfo(
-            tileset.tilesetMVPBuffer,
-            0,
-            sizeof(tileset.tilesetMVPData));
-    
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
-        gh::writeDescriptorSet(
-            tileset.descriptorSet,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            0,
-            &tilesetMVPBufferInfo)
-    };
-
-    gb->updateDescriptorSets(static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
-}
-
-void SpriteEditorOverviewRenderer::setupTilesetPipeline() {
-    // Shaders
-    VkShaderModule vertShaderModule = gb->createShaderModule("res/shaders/tileset_view/tileset/vert.spv");
-    VkShaderModule fragShaderModule = gb->createShaderModule("res/shaders/tileset_view/tileset/frag.spv");
-
-    std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages;
-    shaderStages[0] = gh::pipelineShaderStageCreateInfo(vertShaderModule, VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] = gh::pipelineShaderStageCreateInfo(fragShaderModule, VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    // Vertex input
-    VkPipelineVertexInputStateCreateInfo vertexInputState = gh::pipelineVertexInputStateCreateInfo();
-    vertexInputState.vertexBindingDescriptionCount = 0;
-    vertexInputState.vertexAttributeDescriptionCount = 0;
-
-    // Input assembly
-    VkPipelineInputAssemblyStateCreateInfo inputAssemblyState =
-        gh::pipelineInputAssemblyStateCreateInfo(
-            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            0,
-            VK_FALSE);
-
-    // Viewport
-    VkPipelineViewportStateCreateInfo viewportState = gh::pipelineViewportStateCreateInfo(1, 1, 0);
-
-    // Rasterizer
-    VkPipelineRasterizationStateCreateInfo rasterizationState =
-        gh::pipelineRasterizationStateCreateInfo(
-            VK_POLYGON_MODE_FILL,
-            VK_CULL_MODE_FRONT_BIT,
-            VK_FRONT_FACE_CLOCKWISE,
-            0);
-
-    // Multisampling
-    VkPipelineMultisampleStateCreateInfo multisampleState = 
-        gh::pipelineMultisampleStateCreateInfo(
-            VK_SAMPLE_COUNT_1_BIT,
-            0);
-    
-    // Color blend attachment
-    VkPipelineColorBlendAttachmentState colorBlendAttachmentState = 
-        gh::pipelineColorBlendAttachmentState(
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-            VK_TRUE);
-    colorBlendAttachmentState.blendEnable = VK_TRUE;
-    colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    colorBlendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
-    colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    colorBlendAttachmentState.alphaBlendOp = VK_BLEND_OP_MAX;
-
-    // Color blend state
-    VkPipelineColorBlendStateCreateInfo colorBlendState =
-        gh::pipelineColorBlendStateCreateInfo(
-            1,
-            &colorBlendAttachmentState);
-
-    // Dynamic state
-    std::vector<VkDynamicState> dynamicStateEnables = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-    };
-
-    VkPipelineDynamicStateCreateInfo dynamicState =
-        gh::pipelineDynamicStateCreateInfo(
-            dynamicStateEnables.data(),
-            dynamicStateEnables.size(),
-            0);
-
-    // Pipeline layout creation
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo =
-        gh::pipelineLayoutCreateInfo(
-            &tileset.descriptorSetLayout,
-            1);
-
-    gb->createPipelineLayout(&pipelineLayoutInfo, nullptr, &tileset.pipelineLayout);
-
-    // Actual pipeline creation
-    VkGraphicsPipelineCreateInfo pipelineCreateInfo = gh::pipelineCreateInfo(tileset.pipelineLayout, renderPass, 0);
-    pipelineCreateInfo.pVertexInputState = &vertexInputState;
-    pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
-    pipelineCreateInfo.pRasterizationState = &rasterizationState;
-    pipelineCreateInfo.pColorBlendState = &colorBlendState;
-    pipelineCreateInfo.pMultisampleState = &multisampleState;
-    pipelineCreateInfo.pViewportState = &viewportState;
-    pipelineCreateInfo.pDynamicState = &dynamicState;
-    pipelineCreateInfo.stageCount = shaderStages.size();
-    pipelineCreateInfo.pStages = shaderStages.data();
-    
-    gb->createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &tileset.pipeline);
-
-    // Cleanup
-    gb->destroyShaderModule(vertShaderModule, nullptr);
-    gb->destroyShaderModule(fragShaderModule, nullptr);
-}
-
-void SpriteEditorOverviewRenderer::updateTilesetBuffers() {
-    tileset.tilesetMVPData.tilesetMVP = vp * tileset.model;
-
-    void * data;
-    // Update MVP matrix
-    gb->mapMemory(tileset.tilesetMVPMemory, 0, sizeof(tileset.tilesetMVPData), 0, &data);
-        memcpy(data, &tileset.tilesetMVPData, sizeof(tileset.tilesetMVPData));
-    gb->unmapMemory(tileset.tilesetMVPMemory);
-
-    // update image
-    VkDescriptorImageInfo tilesetImageInfo =
-        gh::descriptorImageInfo(
-            tileset.sprite->getSampler(),
-            tileset.sprite->getImageView(),
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
-        gh::writeDescriptorSet(
-            tileset.descriptorSet,
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            1,
-            &tilesetImageInfo)
-    };
-
-    gb->updateDescriptorSets(static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
-}
-
-void SpriteEditorOverviewRenderer::destroyTileset() {
-    gb->destroyPipeline(tileset.pipeline, nullptr);
-    gb->destroyPipelineLayout(tileset.pipelineLayout, nullptr);
-    gb->destroyBuffer(tileset.tilesetMVPBuffer, nullptr);
-    gb->freeMemory(tileset.tilesetMVPMemory, nullptr);
-    gb->destroyDescriptorSetLayout(tileset.descriptorSetLayout, nullptr);
-}
-
-
-/*--------------------- Quads ---------------------*/
-
-GraphicsQuads * SpriteEditorOverviewRenderer::getCurrentSelectionQuads() {
-    return currentSelection.quads;
-}
-
-GraphicsQuads * SpriteEditorOverviewRenderer::getPreviousSelectionQuads() {
-    return previousSelection.quads;
 }

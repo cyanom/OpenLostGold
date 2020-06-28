@@ -24,6 +24,8 @@
 #include "sprite_preview.h"
 #include "sprite_editor_overview_renderer.h"
 #include "file_browser.h"
+#include "graphics_quads.h"
+#include "graphics_grid.h"
 
 namespace uengine::sprite_editor {
     enum SelectionMode {
@@ -88,8 +90,8 @@ namespace uengine::sprite_editor {
                         
                         struct Tileset {
                             bool tiedToGrid = true;
-                            int offset[2] = {0, 0};
-                            int size[2] = {32, 32};
+                            float offset[2] = {0, 0};
+                            float size[2] = {32, 32};
                             bool crop = 0;
                         } tileset;
 
@@ -115,7 +117,7 @@ namespace uengine::sprite_editor {
                     struct Tileset {
                         glm::mat4 model;
                     
-                        int size[2] = {640, 640};
+                        float size[2] = {640, 640};
                         
                         ImTextureID texture = nullptr;
                     } tileset;
@@ -123,8 +125,8 @@ namespace uengine::sprite_editor {
                     struct Grid {
                         float color1[4] = {1.0f, 0.0f, 0.0f, 1.0f};
                         float color2[4] = {0.0f, 1.0f, 0.0f, 1.0f};
-                        int unitSize[2] = {32, 32};
-                        int offset[2] = {0, 0};
+                        float unitSize[2] = {32, 32};
+                        float offset[2] = {0, 0};
                         bool extended = false;
                     } grid;
 
@@ -187,13 +189,13 @@ namespace uengine::sprite_editor {
             glm::vec2 screenToWorld(glm::vec2 pos);
             void refineSelection();
             void correctSelection();
-            bool emptyColumn(int y1, int y2, int i);
-            bool emptyRow(int x1, int x2, int j);
-            void freeNone(int x1, int y1, int x2, int y2);
-            void freeCrop(int x1, int y1, int x2, int y2);
-            void freeSplit(int x1, int y1, int x2, int y2);
-            void tilesetNoCrop(int x1, int y1, int x2, int y2);
-            void tilesetCrop(int x1, int y1, int x2, int y2);
+            bool emptyColumn(float y1, float y2, float i);
+            bool emptyRow(float x1, float x2, float j);
+            void freeNone(float x1, float y1, float x2, float y2);
+            void freeCrop(float x1, float y1, float x2, float y2);
+            void freeSplit(float x1, float y1, float x2, float y2);
+            void tilesetNoCrop(float x1, float y1, float x2, float y2);
+            void tilesetCrop(float x1, float y1, float x2, float y2);
             void newAnimation();
             void renameAnimation();
             void deleteAnimation();

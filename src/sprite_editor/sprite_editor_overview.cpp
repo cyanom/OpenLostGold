@@ -9,6 +9,7 @@ using Animation = uengine::graphics::Animation;
 using Frame = uengine::graphics::Frame;
 using FrameData = uengine::graphics::FrameData;
 using SpritePreview = uengine::graphics::SpritePreview;
+using GraphicsGrid = uengine::graphics::GraphicsGrid;
 using GraphicsQuads = uengine::graphics::GraphicsQuads;
 namespace fs = std::experimental::filesystem;
 
@@ -22,8 +23,16 @@ SpriteEditorOverview::SpriteEditorOverview(GraphicsBase * gb_) {
     resetModel();
     resetView();
     
-    overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
+    overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
     overview.mv.seor->setBackgroundColor(overview.mv.backgroundColor);
+    overview.mv.seor->getGrid()->setExtended(overview.mv.grid.extended);
+    overview.mv.seor->getGrid()->setTileSize(overview.mv.grid.unitSize);
+    overview.mv.seor->getGrid()->setOffset(overview.mv.grid.offset);
+    overview.mv.seor->getGrid()->setColor1(overview.mv.grid.color1);
+    overview.mv.seor->getGrid()->setColor2(overview.mv.grid.color2);
+    float pos1[2] = {-overview.mv.tileset.size[0] / 2, -overview.mv.tileset.size[1] / 2};
+    float pos2[2] = {overview.mv.tileset.size[0] / 2, overview.mv.tileset.size[1] / 2};
+    overview.mv.seor->getGrid()->setBoundaries(pos1, pos2);
     
     load("res/sprites/characters/alex.spr");
 }
@@ -43,18 +52,6 @@ void SpriteEditorOverview::update() {
 
     updateParameters();
     updatePreviews();
-
-    overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
-    overview.mv.seor->setGridExtended(overview.mv.grid.extended);
-    overview.mv.seor->setGridUnitSize(overview.mv.grid.unitSize);
-    overview.mv.seor->setGridOffset(overview.mv.grid.offset);
-    overview.mv.seor->setGridColor(overview.mv.grid.color1, overview.mv.grid.color2);
-    int size[2] = {overview.mv.size.x, overview.mv.size.y};
-    overview.mv.seor->setGridViewSize(size);
-    overview.mv.seor->setGridTilesetSize(overview.mv.tileset.size);
-    overview.mv.seor->update();
-    
-    overview.mv.seor->getCurrentSelectionQuads()->updateView(overview.mv.projection * overview.mv.view);
 }
 
 void SpriteEditorOverview::renderUI() {
@@ -83,7 +80,7 @@ void SpriteEditorOverview::resize(int32_t width, int32_t height) {
     adjust();
 
     resetProjection();
-    overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
+    overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
     overview.mv.seor->resize(width, height);
 }
 
@@ -100,9 +97,11 @@ void SpriteEditorOverview::updateCurrentSelection() {
     GraphicsQuads * quads = overview.mv.seor->getCurrentSelectionQuads();
     quads->clear();
     Rect rect = overview.mv.rect;
-    quads->addRect(rect.pos, rect.size, rect.color);
+    quads->addRect(rect.pos[0], rect.pos[1], rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1],
+                   rect.color[0], rect.color[1], rect.color[2], rect.color[3]);
     for (Rect rect : overview.mv.subRects) {
-        quads->addRect(rect.pos, rect.size, rect.color);
+        quads->addRect(rect.pos[0], rect.pos[1], rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1],
+                       rect.color[0], rect.color[1], rect.color[2], rect.color[3]);
     }
 }
 
@@ -123,10 +122,10 @@ void SpriteEditorOverview::load(fs::path file) {
     resetModel();
     resetView();
     
-    overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
-    overview.mv.seor->setTilesetModel(overview.mv.tileset.model);
-    overview.mv.seor->setTilesetSprite(overview.sprite);
-    overview.mv.seor->setGridTilesetSize(overview.mv.tileset.size);
+    overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
+    float pos1[2] = {-overview.mv.tileset.size[0] / 2, -overview.mv.tileset.size[1] / 2};
+    float pos2[2] = {overview.mv.tileset.size[0] / 2, overview.mv.tileset.size[1] / 2};
+    overview.mv.seor->getGrid()->setBoundaries(pos1, pos2);
 
     std::cout << overview.sprite->toString() << std::endl;
 
@@ -202,14 +201,18 @@ void SpriteEditorOverview::resetView() {
     overview.mv.view = glm::mat4(1.0f);
     /*
     overview.mv.view = glm::lookAt(
-           glm::vec3(1000.0f,0.0f,10.0f),
-           glm::vec3(0.0f,0.0f,0.0f),
-           glm::vec3(0.0f,1.0f,0.0f));
+           glm::vec3(0.0f,0.0f,100.0f),
+           glm::vec3(1000.0f,100.0f,0.0f),
+           glm::vec3(0.0f,0.0f,1.0f));
     */
 }
 
 void SpriteEditorOverview::resetProjection() {
-    overview.mv.projection = glm::scale(glm::mat4(1.0f), glm::vec3((float) 2.0f / overview.mv.size.x, (float) 2.0 / overview.mv.size.y, 1.0f)) * glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
+    overview.mv.projection = glm::scale(glm::mat4(1.0f),
+                                        glm::vec3((float) 2.0f / overview.mv.size.x,
+                                                  (float) 2.0 / overview.mv.size.y,
+                                                  1.0f)) *
+                             glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
     /*
     overview.mv.projection =
         glm::perspective(
@@ -217,8 +220,8 @@ void SpriteEditorOverview::resetProjection() {
         (float) overview.mv.size.x / overview.mv.size.y,
         0.1f,
         1000.0f);
+    overview.mv.projection[1][1] *= -1;
     */
-    //overview.mv.projection[1][1] *= -1;
 }
 
 void SpriteEditorOverview::translateView(float dx, float dy, float dz) {
@@ -256,12 +259,12 @@ void SpriteEditorOverview::refineSelection() {
     
     if (overview.gp.sel.mode == SelectionMode_Free) {
 
-        int x1 = (int) std::min(std::max(overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2, 0.0f), (float) overview.mv.tileset.size[0]);
-        int y1 = (int) std::min(std::max(overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2, 0.0f), (float) overview.mv.tileset.size[1]);
-        int x2 = (int) std::min(std::max(overview.mv.rect.pos[0] + overview.mv.rect.size[0] + overview.mv.tileset.size[0] / 2, 0.0f), (float) overview.mv.tileset.size[0]);
-        int y2 = (int) std::min(std::max(overview.mv.rect.pos[1] + overview.mv.rect.size[1] + overview.mv.tileset.size[1] / 2, 0.0f), (float) overview.mv.tileset.size[1]);
-        int w = x2 - x1;
-        int h = y2 - y1;
+        float x1 = (int) std::min(std::max(overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2, 0.0f), (float) overview.mv.tileset.size[0]);
+        float y1 = (int) std::min(std::max(overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2, 0.0f), (float) overview.mv.tileset.size[1]);
+        float x2 = (int) std::min(std::max(overview.mv.rect.pos[0] + overview.mv.rect.size[0] + overview.mv.tileset.size[0] / 2, 0.0f), (float) overview.mv.tileset.size[0]);
+        float y2 = (int) std::min(std::max(overview.mv.rect.pos[1] + overview.mv.rect.size[1] + overview.mv.tileset.size[1] / 2, 0.0f), (float) overview.mv.tileset.size[1]);
+        float w = x2 - x1;
+        float h = y2 - y1;
 
         if (w == 0 || h == 0) {
             return;
@@ -280,10 +283,10 @@ void SpriteEditorOverview::refineSelection() {
         }
 
     } else if (overview.gp.sel.mode == SelectionMode_Tileset) {
-        int x1 = ((int) (overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2 - overview.gp.sel.tileset.offset[0]) / overview.gp.sel.tileset.size[0]) * overview.gp.sel.tileset.size[0] + overview.gp.sel.tileset.offset[0];
-        int y1 = ((int) (overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2 - overview.gp.sel.tileset.offset[1]) / overview.gp.sel.tileset.size[1]) * overview.gp.sel.tileset.size[1] + overview.gp.sel.tileset.offset[1];
-        int x2 = ((int) (overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2 + overview.mv.rect.size[0] - overview.gp.sel.tileset.offset[0]) / overview.gp.sel.tileset.size[0] + 1) * overview.gp.sel.tileset.size[0] + overview.gp.sel.tileset.offset[0];
-        int y2 = ((int) (overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2 + overview.mv.rect.size[1] - overview.gp.sel.tileset.offset[1]) / overview.gp.sel.tileset.size[1] + 1) * overview.gp.sel.tileset.size[1] + overview.gp.sel.tileset.offset[1];
+        float x1 = ((int) (overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2 - overview.gp.sel.tileset.offset[0]) / overview.gp.sel.tileset.size[0]) * overview.gp.sel.tileset.size[0] + overview.gp.sel.tileset.offset[0];
+        float y1 = ((int) (overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2 - overview.gp.sel.tileset.offset[1]) / overview.gp.sel.tileset.size[1]) * overview.gp.sel.tileset.size[1] + overview.gp.sel.tileset.offset[1];
+        float x2 = ((int) (overview.mv.rect.pos[0] + overview.mv.tileset.size[0] / 2 + overview.mv.rect.size[0] - overview.gp.sel.tileset.offset[0]) / overview.gp.sel.tileset.size[0] + 1) * overview.gp.sel.tileset.size[0] + overview.gp.sel.tileset.offset[0];
+        float y2 = ((int) (overview.mv.rect.pos[1] + overview.mv.tileset.size[1] / 2 + overview.mv.rect.size[1] - overview.gp.sel.tileset.offset[1]) / overview.gp.sel.tileset.size[1] + 1) * overview.gp.sel.tileset.size[1] + overview.gp.sel.tileset.offset[1];
         x1 = std::min(std::max(x1, overview.gp.sel.tileset.offset[0]), ((int) overview.mv.tileset.size[0] / overview.gp.sel.tileset.size[0] + 1) * overview.gp.sel.tileset.size[0] - overview.gp.sel.tileset.offset[0]);
         y1 = std::min(std::max(y1, overview.gp.sel.tileset.offset[1]), ((int) overview.mv.tileset.size[1] / overview.gp.sel.tileset.size[1] + 1) * overview.gp.sel.tileset.size[1] - overview.gp.sel.tileset.offset[1]);
         x2 = std::min(std::max(x2, overview.gp.sel.tileset.offset[0]), ((int) (overview.mv.tileset.size[0] - overview.gp.sel.tileset.offset[0]) / overview.gp.sel.tileset.size[0]) * overview.gp.sel.tileset.size[0] + overview.gp.sel.tileset.offset[0]);
@@ -312,7 +315,7 @@ void SpriteEditorOverview::correctSelection() {
     }
 }
 
-void SpriteEditorOverview::freeNone(int x1, int y1, int x2, int y2) {
+void SpriteEditorOverview::freeNone(float x1, float y1, float x2, float y2) {
     Rect rect = {
         {(float) x1 - overview.mv.tileset.size[0] / 2, (float) y1 - overview.mv.tileset.size[1] / 2},
         {(float) x2 - x1, (float) y2 - y1},
@@ -322,7 +325,7 @@ void SpriteEditorOverview::freeNone(int x1, int y1, int x2, int y2) {
     overview.mv.subRects.push_back(rect);
 }
 
-bool SpriteEditorOverview::emptyColumn(int y1, int y2, int i) {
+bool SpriteEditorOverview::emptyColumn(float y1, float y2, float i) {
     for (int j = y1; j < y2; j++) {
         uint8_t * p = overview.sprite->getPixel(i, j);
         if (*(p + 3)) {
@@ -332,7 +335,7 @@ bool SpriteEditorOverview::emptyColumn(int y1, int y2, int i) {
     return true;
 }
 
-bool SpriteEditorOverview::emptyRow(int x1, int x2, int j) {
+bool SpriteEditorOverview::emptyRow(float x1, float x2, float j) {
     for (int i = x1; i < x2; i++) {
         uint8_t * p = overview.sprite->getPixel(i, j);
         if (*(p + 3)) {
@@ -342,7 +345,7 @@ bool SpriteEditorOverview::emptyRow(int x1, int x2, int j) {
     return true;
 }
 
-void SpriteEditorOverview::freeCrop(int x1, int y1, int x2, int y2) {
+void SpriteEditorOverview::freeCrop(float x1, float y1, float x2, float y2) {
     int r1;
     for (r1 = y1; emptyRow(x1, x2, r1) && r1 < y2; r1++);
     if (r1 == y2)
@@ -368,7 +371,7 @@ void SpriteEditorOverview::freeCrop(int x1, int y1, int x2, int y2) {
     overview.mv.subRects.push_back(rect);
 }
 
-void SpriteEditorOverview::freeSplit(int x1, int y1, int x2, int y2) {
+void SpriteEditorOverview::freeSplit(float x1, float y1, float x2, float y2) {
     overview.mv.subRects.clear();
     
     int c1, c2, nb = 0;
@@ -401,7 +404,7 @@ void SpriteEditorOverview::freeSplit(int x1, int y1, int x2, int y2) {
     }
 }
 
-void SpriteEditorOverview::tilesetNoCrop(int x1, int y1, int x2, int y2) {
+void SpriteEditorOverview::tilesetNoCrop(float x1, float y1, float x2, float y2) {
     overview.mv.subRects.clear();
 
     for (int j = y1; j < y2; j += overview.gp.sel.tileset.size[1]) {
@@ -416,7 +419,7 @@ void SpriteEditorOverview::tilesetNoCrop(int x1, int y1, int x2, int y2) {
     }
 }
 
-void SpriteEditorOverview::tilesetCrop(int x1, int y1, int x2, int y2) {
+void SpriteEditorOverview::tilesetCrop(float x1, float y1, float x2, float y2) {
     overview.mv.subRects.clear();
 
     for (int j = y1; j < y2; j += overview.gp.sel.tileset.size[1]) {
@@ -575,19 +578,19 @@ void SpriteEditorOverview::showGeneralPanel() {
         ImGui::Text("View:");
         if (ImGui::Button("Reset view")) {
             resetView();
-            overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
+            overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
         }
         if (ImGui::InputFloat("Scale", &overview.mv.parameters.scale)) {
             resetView();
             scaleAbsoluteView(overview.mv.parameters.scale);
             translateView(overview.mv.parameters.position[0], overview.mv.parameters.position[1]);
-            overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
+            overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
         }
         if (ImGui::InputFloat2("Position", overview.mv.parameters.position)) {
             resetView();
             scaleAbsoluteView(overview.mv.parameters.scale);
             translateView(overview.mv.parameters.position[0], overview.mv.parameters.position[1]);
-            overview.mv.seor->setVP(overview.mv.projection * overview.mv.view);
+            overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
         }
         if (ImGui::ColorEdit4("BG color", overview.mv.backgroundColor)) {
             overview.mv.seor->setBackgroundColor(overview.mv.backgroundColor);
@@ -598,31 +601,31 @@ void SpriteEditorOverview::showGeneralPanel() {
         
         ImGui::Text("Grid:");
         if (ImGui::Checkbox("Extended", &overview.mv.grid.extended)) {
-            overview.mv.seor->setGridExtended(overview.mv.grid.extended);
+            overview.mv.seor->getGrid()->setExtended(overview.mv.grid.extended);
         }
-        if (ImGui::InputInt2("Unit size", overview.mv.grid.unitSize)) {
+        if (ImGui::InputFloat2("Unit size", overview.mv.grid.unitSize)) {
             if (overview.gp.sel.tileset.tiedToGrid) {
                 overview.gp.sel.tileset.size[0] = overview.mv.grid.unitSize[0];
                 overview.gp.sel.tileset.size[1] = overview.mv.grid.unitSize[1];
                 refineSelection();
                 overview.mv.currentSelectionChanged = true;
             }
-            overview.mv.seor->setGridUnitSize(overview.mv.grid.unitSize);
+            overview.mv.seor->getGrid()->setTileSize(overview.mv.grid.unitSize);
         }
-        if (ImGui::InputInt2("Offset", overview.mv.grid.offset)) {
+        if (ImGui::InputFloat2("Offset", overview.mv.grid.offset)) {
             if (overview.gp.sel.tileset.tiedToGrid) {
                 overview.gp.sel.tileset.offset[0] = overview.mv.grid.offset[0];
                 overview.gp.sel.tileset.offset[1] = overview.mv.grid.offset[1];
                 refineSelection();
                 overview.mv.currentSelectionChanged = true;
             }
-            overview.mv.seor->setGridOffset(overview.mv.grid.offset);
+            overview.mv.seor->getGrid()->setOffset(overview.mv.grid.offset);
         }
         if (ImGui::ColorEdit4("Color1", overview.mv.grid.color1)) {
-            overview.mv.seor->setGridColor(overview.mv.grid.color1, overview.mv.grid.color2);
+            overview.mv.seor->getGrid()->setColor1(overview.mv.grid.color1);
         }
         if (ImGui::ColorEdit4("Color2", overview.mv.grid.color2)) {
-            overview.mv.seor->setGridColor(overview.mv.grid.color1, overview.mv.grid.color2);
+            overview.mv.seor->getGrid()->setColor2(overview.mv.grid.color2);
         }
         
         
@@ -670,12 +673,12 @@ void SpriteEditorOverview::showGeneralPanel() {
                 refineSelection();
             }
             if (!overview.gp.sel.tileset.tiedToGrid) {
-                if (ImGui::InputInt2("Tileset offset", overview.gp.sel.tileset.offset)) {
-                    overview.gp.sel.tileset.offset[0] %= overview.gp.sel.tileset.size[0];
-                    overview.gp.sel.tileset.offset[1] %= overview.gp.sel.tileset.size[1];
+                if (ImGui::InputFloat2("Tileset offset", overview.gp.sel.tileset.offset)) {
+                    overview.gp.sel.tileset.offset[0] = std::fmod(overview.gp.sel.tileset.offset[0], overview.gp.sel.tileset.size[0]);
+                    overview.gp.sel.tileset.offset[1] = std::fmod(overview.gp.sel.tileset.offset[1], overview.gp.sel.tileset.size[1]);
                     refineSelection();
                 }
-                if (ImGui::InputInt2("Tileset size", overview.gp.sel.tileset.size)) {
+                if (ImGui::InputFloat2("Tileset size", overview.gp.sel.tileset.size)) {
                     overview.gp.sel.tileset.size[0] += overview.gp.sel.tileset.size[0] == 0;
                     overview.gp.sel.tileset.size[1] += overview.gp.sel.tileset.size[1] == 0;
                     refineSelection();
@@ -760,6 +763,7 @@ void SpriteEditorOverview::showMainView() {
                     factor = factor - 1.0;
                 }
                 scaleFromPointView(factor, dx, dy);
+                overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
             }
         }
 
@@ -768,15 +772,19 @@ void SpriteEditorOverview::showMainView() {
             float step = 4.0;
             if (ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_UpArrow))) {
                 translateView(0.0, step, 0.0);
+                overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
             }
             if (ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_DownArrow))) {
                 translateView(0.0, -step, 0.0);
+                overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
             }
             if (ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_RightArrow))) {
                 translateView(-step, 0.0, 0.0);
+                overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
             }
             if (ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_LeftArrow))) {
                 translateView(step, 0.0, 0.0);
+                overview.mv.seor->setViewProjection(overview.mv.projection * overview.mv.view);
             }
         }
 
