@@ -96,12 +96,13 @@ void SpriteEditorOverview::updatePreviews() {
 void SpriteEditorOverview::updateCurrentSelection() {
     GraphicsQuads * quads = overview.mv.seor->getCurrentSelectionQuads();
     quads->clear();
+    
     Rect rect = overview.mv.rect;
     quads->addRect(rect.pos[0], rect.pos[1], rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1],
-                   rect.color[0], rect.color[1], rect.color[2], rect.color[3]);
+                   rect.color[0], rect.color[1], rect.color[2], rect.color[3], true);
     for (Rect rect : overview.mv.subRects) {
         quads->addRect(rect.pos[0], rect.pos[1], rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1],
-                       rect.color[0], rect.color[1], rect.color[2], rect.color[3]);
+                       rect.color[0], rect.color[1], rect.color[2], rect.color[3], false);
     }
 }
 

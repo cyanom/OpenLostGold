@@ -1,4 +1,14 @@
+# Ignore binaries
 build/
+
+# Ignore sprites
 res/sprites/
+
+# Vim files
 *.swp
 *.swo
+
+# Shaders
+glslc
+*.spv
+compile.sh

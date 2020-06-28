@@ -12,8 +12,8 @@ SpriteEditorOverviewRenderer::SpriteEditorOverviewRenderer(GraphicsBase * gb_) {
     gb = gb_;
     setupRenderPass();
     grid = new GraphicsGrid(gb, &renderPass);
-    currentSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
-    previousSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 1, false);
+    currentSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 3);
+    previousSelectionQuads = new GraphicsQuads(gb, &renderPass, 1000, 3);
 }
 
 SpriteEditorOverviewRenderer::~SpriteEditorOverviewRenderer() {
