@@ -1,0 +1,35 @@
+
+
+[Current skin]
+[Rename skin]
+[Delete skin]
+[Skins combo list]
+---
+[current sprite animation]
+[combo list animations]
+---
+[new] -> [name textfield | OK | CANCEL]
+[rename]
+[delete]
+[append]
+[edit]
+
+
+
+[Background Checker Box 1]
+    [Checkbox visible]
+    [Box colors]
+[Background Box 2]
+    [Checkbox visible]
+    [Box color]
+[Set general speed]
+---
+[Frame Combo List][delete]
+[set speed]
+
+[Main image]
+
+[Preview]
+[Previous | Play/Pause | Next]
+
+

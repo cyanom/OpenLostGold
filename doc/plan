@@ -1,0 +1,108 @@
+=== Basic Sprites Pipeline ===
+
+- Hardcoded unit square (pos and uvs)
+
+- Instance data {
+    vec3 pos
+    vec3 color
+    float alpha
+    vec2 uvPos
+    vec2 uvSize
+    vec2 size
+    float angle
+    int textureId
+}
+
+- SSBO {
+    textures[];
+}
+
+- UBO {
+    view
+    projection
+}
+
+
+=== Tilemap Pipeline ===
+
+- Hardcoded unit square (pos and uvs)
+
+- Instance data {
+    vec3 pos
+    vec3 color
+    float alpha
+    vec2 uvPos
+    vec2 uvSize
+}
+
+- UBO texture
+
+- UBO {
+    view
+    projection
+}
+
+
+=== Lighting pipeline ===
+
+1st Pass: Occlusion map
+
+- Clear 00000000000
+
+- Vertex polygons => binary mask 0010010100101011 {
+    vec2 pos
+    float id
+}
+
+2nd Pass: Illuminate
+
+- SSBO {
+    Light {
+        pos
+        color
+        radius
+    } lights[50]
+}
+
+- UBO {
+    nbLights
+}
+
+=== Spritesheet editor main display ====
+
+- Tileset
+    - UBO {
+        mat4 model
+        sampler texture
+    }
+    - UBO {
+        mat4 view
+        mat4 projection
+    }
+
+- Grid
+    - UBO {
+        vec3 color0
+        vec3 color1
+        vec3 color2
+        vec2 w, h
+    }
+    - UBO {
+        mat4 inverse_vp
+    }
+
+- Sprites selection
+    - Hardcoded shaded squares
+    - Instancing {mat4 model, vec4 color}
+    - UBO {
+        mat4 view
+        mat4 projection
+    }
+
+=== TODO ===
+
+- Finish sprite editor
+    - make sprite system: first texture draw
+    - offscreen rendering: draw in UI component main view
+    - Finish skin and animation selection
+    - draw sprite frame editor in UI component
